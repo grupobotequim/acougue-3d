@@ -1,0 +1,139 @@
+<!doctype html>
+<html lang="pt-BR">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no, viewport-fit=cover">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="theme-color" content="#111214">
+<title>Açougue Novo Amanhecer 3D</title>
+<style>
+  :root { --vidro: rgba(18,19,22,.62); --borda: rgba(255,255,255,.14); --txt: #f4f1ea; --dourado: #e3c27e; }
+  * { box-sizing: border-box; -webkit-tap-highlight-color: transparent; }
+  html, body { margin: 0; height: 100%; overflow: hidden; background: #111214; color: var(--txt);
+    font-family: -apple-system, "SF Pro Text", "Segoe UI", Roboto, Arial, sans-serif; touch-action: none;
+    -webkit-user-select: none; user-select: none; overscroll-behavior: none; }
+  #cena, #cena canvas { position: fixed; inset: 0; width: 100%; height: 100%; display: block; touch-action: none; }
+  .vid { background: var(--vidro); border: 1px solid var(--borda); backdrop-filter: blur(14px) saturate(140%);
+    -webkit-backdrop-filter: blur(14px) saturate(140%); box-shadow: 0 8px 28px rgba(0,0,0,.35); }
+  .marca { position: fixed; top: calc(14px + env(safe-area-inset-top)); left: calc(14px + env(safe-area-inset-left));
+    padding: 10px 16px 10px 14px; border-radius: 16px; display: flex; gap: 10px; align-items: center; pointer-events: none; }
+  .marca i { width: 8px; height: 30px; border-radius: 4px; background: linear-gradient(#e3c27e, #a8823e); }
+  .marca b { display: block; font-size: 14px; letter-spacing: .02em; } .marca em { font-style: normal; }
+  .marca span { display: block; font-size: 11.5px; opacity: .72; margin-top: 2px; }
+  .fab { position: fixed; width: 50px; height: 50px; border-radius: 50%; display: grid; place-items: center;
+    color: var(--txt); cursor: pointer; padding: 0; transition: transform .15s, background .15s; }
+  .fab:active { transform: scale(.94); }
+  .fab svg { width: 22px; height: 22px; }
+  #btnVistas { top: calc(14px + env(safe-area-inset-top)); right: calc(14px + env(safe-area-inset-right)); }
+  #btnAjuda { top: calc(74px + env(safe-area-inset-top)); right: calc(14px + env(safe-area-inset-right)); }
+  .modo { position: fixed; right: calc(16px + env(safe-area-inset-right)); bottom: calc(18px + env(safe-area-inset-bottom));
+    display: flex; padding: 5px; border-radius: 999px; gap: 4px; }
+  .modo button { border: 0; background: transparent; color: var(--txt); font: 600 13.5px/1 inherit; font-family: inherit;
+    padding: 11px 16px; border-radius: 999px; display: flex; align-items: center; gap: 7px; cursor: pointer; opacity: .75; }
+  .modo button svg { width: 17px; height: 17px; }
+  .modo button.on { background: var(--txt); color: #15161a; opacity: 1; }
+  .dica { position: fixed; left: 50%; transform: translateX(-50%); bottom: calc(22px + env(safe-area-inset-bottom));
+    padding: 9px 15px; border-radius: 999px; font-size: 12.5px; opacity: .9; pointer-events: none; white-space: nowrap; }
+  .dica kbd { font: 600 11px inherit; font-family: inherit; border: 1px solid rgba(255,255,255,.3); border-radius: 5px; padding: 1px 5px; margin: 0 1px; }
+  body.touch .dica, body.orbit .dica { display: none; }
+  #joy { position: fixed; left: calc(26px + env(safe-area-inset-left)); bottom: calc(30px + env(safe-area-inset-bottom));
+    width: 110px; height: 110px; border-radius: 50%; display: none; pointer-events: none; opacity: .85;
+    background: rgba(18,19,22,.55); border: 2px solid rgba(255,255,255,.7);
+    backdrop-filter: blur(10px); -webkit-backdrop-filter: blur(10px); box-shadow: 0 6px 22px rgba(0,0,0,.28); transition: opacity .2s; }
+  /* RODADA 10: 4 setinhas dentro do anel (lê como joystick mesmo sobre piso claro) */
+  #joy svg { position: absolute; inset: 0; width: 100%; height: 100%; }
+  /* ícone fixo 'arraste pra olhar' (canto inferior direito, acima do Andar/Planta) — some só após o 1º arraste */
+  #iconeOlhar { position: fixed; right: calc(20px + env(safe-area-inset-right)); bottom: calc(80px + env(safe-area-inset-bottom));
+    width: 46px; height: 46px; border-radius: 50%; display: none; place-items: center; pointer-events: none;
+    background: rgba(18,19,22,.55); border: 1.5px solid rgba(255,255,255,.55); color: #fff; opacity: .8; transition: opacity .4s; }
+  #iconeOlhar svg { width: 26px; height: 26px; }
+  body.touch #iconeOlhar { display: grid; }
+  body.touch.orbit #iconeOlhar, body.olhou #iconeOlhar { display: none; }
+  body.touch .olhar { bottom: calc(136px + env(safe-area-inset-bottom)); }
+  #knob { position: absolute; left: 32px; top: 32px; width: 44px; height: 44px; border-radius: 50%;
+    background: rgba(255,255,255,.9); border: 1px solid rgba(0,0,0,.45); box-shadow: 0 4px 14px rgba(0,0,0,.35); }
+  body.touch #joy { display: block; }
+  body.touch.orbit #joy { display: none; }
+  #joy.ativo { opacity: 1; }
+  /* RODADA 6: ancorada na direita (16 px) e limitada à largura da tela — nunca sai cortada */
+  .olhar { position: fixed; right: calc(16px + env(safe-area-inset-right)); bottom: calc(78px + env(safe-area-inset-bottom));
+    max-width: calc(100% - 32px); white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+    font-size: 11px; opacity: .85; display: none; pointer-events: none; text-align: center; transition: opacity .6s; }
+  .olhar.sumiu { opacity: 0; }
+  .olhar.vid { background: rgba(0,0,0,.55); border-color: rgba(255,255,255,.22); color: #fff; opacity: 1; font-size: 12px; font-weight: 600; }
+  .olhar.vid.sumiu { opacity: 0; }
+  body.touch .olhar { display: block; }
+  body.touch.orbit .olhar { display: none; }
+  #painel { position: fixed; top: calc(14px + env(safe-area-inset-top)); right: calc(74px + env(safe-area-inset-right));
+    width: 250px; max-height: calc(100% - 110px); overflow: auto; border-radius: 18px; padding: 8px;
+    opacity: 0; transform: translateY(-6px) scale(.98); pointer-events: none; transition: .18s; }
+  body.vistas-abertas #painel { opacity: 1; transform: none; pointer-events: auto; }
+  #painel h4 { margin: 6px 10px 8px; font-size: 11px; letter-spacing: .12em; text-transform: uppercase; opacity: .6; }
+  .vista { display: flex; width: 100%; gap: 10px; align-items: center; border: 0; background: transparent; color: var(--txt);
+    font: 14px/1.2 inherit; font-family: inherit; text-align: left; padding: 10px; border-radius: 12px; cursor: pointer; }
+  .vista:hover, .vista:active { background: rgba(255,255,255,.1); }
+  .vista b { font-size: 11px; min-width: 30px; color: var(--dourado); }
+  #ajuda { position: fixed; inset: 0; display: none; place-items: center; background: rgba(0,0,0,.35); }
+  body.ajuda-aberta #ajuda { display: grid; }
+  #ajuda .card { max-width: 340px; margin: 20px; padding: 20px 22px; border-radius: 20px; font-size: 14px; line-height: 1.5; }
+  #ajuda h3 { margin: 0 0 8px; font-size: 16px; }
+  #ajuda p { margin: 6px 0; opacity: .9; }
+  #toast { position: fixed; left: 50%; top: calc(18px + env(safe-area-inset-top)); transform: translate(-50%, -10px);
+    padding: 9px 16px; border-radius: 999px; font-size: 13px; font-weight: 600; opacity: 0; transition: .25s; pointer-events: none; }
+  #toast.show { opacity: 1; transform: translate(-50%, 0); }
+  #carregando { position: fixed; inset: 0; display: grid; place-items: center; background: #111214; transition: opacity .5s; z-index: 5; }
+  #carregando div { text-align: center; font-size: 14px; opacity: .85; }
+  #carregando i { display: block; width: 36px; height: 36px; margin: 0 auto 14px; border-radius: 50%;
+    border: 3px solid rgba(255,255,255,.15); border-top-color: var(--dourado); animation: g 1s linear infinite; }
+  @keyframes g { to { transform: rotate(360deg); } }
+  /* RODADA 7: some de verdade depois do fade (visibility) — nada de "Montando…" semitransparente sobre a cena */
+  body.pronto #carregando { opacity: 0; visibility: hidden; pointer-events: none; transition: opacity .5s, visibility 0s .5s; }
+  body.shot .ui, body.shot #carregando { display: none !important; }
+  @media (max-width: 520px) {
+    /* RODADA 8: no celular o cartão vira 1 linha curta (não cobre forro/letreiro) */
+    .marca { padding: 7px 12px 7px 9px; gap: 8px; border-radius: 12px; } .marca i { height: 18px; width: 6px; } .marca b { font-size: 14px; white-space: nowrap; } .marca span, .marca .longo { display: none; }
+    .modo button { padding: 11px 13px; }
+    #painel { right: calc(14px + env(safe-area-inset-right)); top: calc(72px + env(safe-area-inset-top)); width: calc(100% - 28px); }
+  }
+</style>
+<script type="importmap">
+{ "imports": { "three": "./js/three.module.js" } }
+</script>
+</head>
+<body>
+<div id="cena"></div>
+
+<div class="ui marca vid"><i></i><div><b><em class="longo">Casa de Carnes </em>Novo Amanhecer</b><span>Área de atendimento · 3D em escala real</span></div></div>
+
+<button class="ui fab vid" id="btnVistas" title="Pontos de vista" aria-label="Pontos de vista">
+  <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M2 12s3.6-7 10-7 10 7 10 7-3.6 7-10 7S2 12 2 12z"/><circle cx="12" cy="12" r="3"/></svg>
+</button>
+<button class="ui fab vid" id="btnAjuda" title="Como usar" aria-label="Como usar">
+  <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"><circle cx="12" cy="12" r="9.5"/><path d="M9.5 9.3a2.6 2.6 0 0 1 5 .9c0 1.7-2.5 2.2-2.5 3.8"/><circle cx="12" cy="17.2" r=".6" fill="currentColor"/></svg>
+</button>
+<div class="ui vid" id="painel"><h4>Pontos de vista</h4><div id="listaVistas"></div></div>
+
+<div class="ui modo vid">
+  <button data-modo="walk" class="on"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"><circle cx="13" cy="4" r="2"/><path d="M10 21l2-6 3 3v3M8 12l2-4 4 1 2 3 2 1M12 15l-1-5"/></svg>Andar</button>
+  <button data-modo="orbit"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linejoin="round"><path d="M12 3l9 5-9 5-9-5 9-5z"/><path d="M3 13l9 5 9-5"/></svg>Planta</button>
+</div>
+
+<div class="ui dica vid"><kbd>W</kbd><kbd>A</kbd><kbd>S</kbd><kbd>D</kbd> ou setas pra andar · arraste pra olhar · <kbd>Shift</kbd> corre</div>
+<div class="ui" id="joy"><svg viewBox="0 0 110 110" fill="none" stroke="rgba(255,255,255,.8)" stroke-width="2.6" stroke-linecap="round" stroke-linejoin="round"><path d="M47 17l8-7 8 7M47 93l8 7 8-7M17 47l-7 8 7 8M93 47l7 8-7 8"/></svg><div id="knob"></div></div>
+<div class="ui" id="iconeOlhar" title="arraste pra olhar"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><path d="M9 11V6.5a1.5 1.5 0 0 1 3 0V11m0-1.5a1.5 1.5 0 0 1 3 0V11m0-.5a1.5 1.5 0 0 1 3 0V15a6 6 0 0 1-6 6h-.6a5 5 0 0 1-3.9-1.9L4.6 15.6a1.5 1.5 0 0 1 2.3-1.9L9 16"/><path d="M3 5h4M5 3l-2 2 2 2M21 5h-4M19 3l2 2-2 2"/></svg></div>
+<div class="ui olhar vid" style="padding:8px 12px;border-radius:999px">arraste aqui pra olhar</div>
+<div class="ui vid" id="toast"></div>
+<div class="ui" id="ajuda"><div class="card vid">
+  <h3>Como andar pela loja</h3>
+  <p><b>Computador:</b> W A S D ou setas andam; arraste o mouse pra olhar; Shift corre; roda do mouse aproxima.</p>
+  <p><b>iPhone / iPad:</b> polegar esquerdo no joystick pra andar; arraste no lado direito pra olhar.</p>
+  <p><b>Planta:</b> vista de cima — gire com um dedo, aproxime com dois.</p>
+  <p>O tampo portão e o portão do caixa abrem sozinhos quando você chega perto.</p>
+  <p style="opacity:.75;font-size:12px">Itens fora da planta (extintor, ar-condicionado, câmeras) são só ilustrativos e ficam desligados; pra vê-los, abra com <b>?extras=1</b>.</p>
+  <p style="opacity:.6;font-size:12px">Medidas da planta Real Refrigeração (1:50). Toque pra fechar.</p>
+</div></div>
+<div id="carregando"><div><i></i>Montando o açougue…</div></div>
+
+<script type="module" src="./js/app.js"></script>
+</body>
+</html>
