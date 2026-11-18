@@ -24,6 +24,9 @@ function cv(w, h) {
 // 18/11: teto de tamanho de textura (celular com pouca memória travava o Safari)
 export let MAXTEX = 8192;
 export function setMaxTex(m) { MAXTEX = m; }
+// 18/11: detalhe procedural no celular (fundo da rua em resolução menor e crosta com menos pontinhos → carrega bem mais rápido)
+export let DET = 1;
+export function setDet(d) { DET = d; }
 
 function tex(c, { srgb = true, repeat = true } = {}) {
   const lado = Math.max(c.width, c.height);
@@ -1204,7 +1207,7 @@ export function crosta(seed = 1, base = '#c47a2a') {
   const [c, x] = cv(W, W);
   x.fillStyle = base; x.fillRect(0, 0, W, W);
   blotch(x, W, W, r, 60, ['rgb(140,70,20)', 'rgb(226,160,72)', 'rgb(190,100,36)'], 6, 26, 0.55);
-  for (let i = 0; i < 5000; i++) { x.fillStyle = r() < 0.5 ? 'rgba(255,220,150,0.5)' : 'rgba(90,40,10,0.5)'; const s = 1 + r() * 2.4; x.fillRect(r() * W, r() * W, s, s); }
+  for (let i = 0; i < 5000 * DET; i++) { x.fillStyle = r() < 0.5 ? 'rgba(255,220,150,0.5)' : 'rgba(90,40,10,0.5)'; const s = 1 + r() * 2.4; x.fillRect(r() * W, r() * W, s, s); }
   speckle(x, W, W, 1200, ['#2d1d0c', '#3f5a22'], r, 0.8, 2.2, 0.5, 0.9);
   const id = x.getImageData(0, 0, W, W).data, hm = new Float32Array(W * W);
   for (let k = 0; k < W * W; k++) hm[k] = (id[k * 4] + id[k * 4 + 1] + id[k * 4 + 2]) / 765;
@@ -1234,14 +1237,15 @@ export function fundoUrbano() {
   // RODADA 8: 3840 px = 120 m de largura (16 m de altura), sem carros, desfoque 7 px e saturação 40% (profundidade de campo)
   // RODADA 10: canvas em 2× (7680 × 1024 = 64 px/m) — o mesmo desenho com metade do desfoque relativo (fundo nítido)
   const W = 3840, H = 512, r = rng(1500);
-  const [c, x] = cv(W * 2, H * 2); x.scale(2, 2);
+  const E = DET < 1 ? 0.5 : 2;
+  const [c, x] = cv(W * E, H * E); x.scale(E, E);
   const ceu = x.createLinearGradient(0, 0, 0, H);
   ceu.addColorStop(0, '#a9bccd'); ceu.addColorStop(0.5, '#d3dbe0'); ceu.addColorStop(1, '#d9dad6');
   x.fillStyle = ceu; x.fillRect(0, 0, W, H);
   // RODADA 7: rua de bairro com mais detalhe e pouco desfoque (2 px): sobrados e prédios baixos de cores variadas,
   // janelas de tamanhos diferentes com caixilho/persiana, sacadas, ar-condicionado, toldos, letreiros, árvores, carros
   // estacionados, postes e fiação. Tons médios (nada estourado).
-  x.filter = 'blur(9px) saturate(50%) contrast(72%) brightness(106%)'; // RODADA 11: fundo em 'bokeh' (desfoque forte, contraste baixo)
+  x.filter = `blur(${(9 * E / 2).toFixed(2)}px) saturate(50%) contrast(72%) brightness(106%)`; // RODADA 11: fundo em 'bokeh' (desfoque forte, contraste baixo)
   let px = -20;
   const cores = ['#a89c8a', '#97928a', '#b8ae9c', '#8c857a', '#b0a28e', '#7f7c77', '#c2b8a6', '#939a98', '#a7846a', '#8b9a8a', '#c9b48e'];
   const toldos = ['#7a3b2e', '#2f5470', '#6a6a3a', '#8a2a2a', '#2e6a4a', '#c08a2a'];

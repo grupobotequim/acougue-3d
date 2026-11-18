@@ -40,8 +40,9 @@ try {
 if (Q.has('leve')) LEVE = Math.max(0, Math.min(2, +Q.get('leve') || 0));
 if (!MOBILE && !Q.has('leve')) LEVE = 0;
 try { localStorage.setItem('acg-carga', JSON.stringify({ carregando: true, leve: LEVE, em: Date.now() })); } catch {}
-const PR_MAX = MOBILE ? [2, 1.25, 1][LEVE] : 2;
+const PR_MAX = MOBILE ? [1.5, 1.25, 1][LEVE] : 2;
 TX.setMaxTex(MOBILE ? [2048, 1024, 512][LEVE] : 8192);
+TX.setDet(MOBILE ? 0.35 : 1);
 
 // ------------------------------------------------------------------ renderer
 const renderer = new THREE.WebGLRenderer({ antialias: true, powerPreference: MOBILE ? 'default' : 'high-performance' });
@@ -2256,7 +2257,7 @@ document.getElementById('ajuda').addEventListener('click', () => document.body.c
 // (rodada 4) pós: GTAO (desktop) + bloom leve (UnrealBloom, limiar alto: só LEDs, letreiro e o brilho das vitrines)
 // no desktop e no celular. Na captura de prints (?shot) o GTAO usa menos amostras.
 let composer = null, bloom = null;
-if (!LEVE) {
+if (!MOBILE) { // 18/11: celular sem pós-processamento (HDR + MSAA + bloom pesava demais)
   const pr = renderer.getPixelRatio();
   const rt = new THREE.WebGLRenderTarget(innerWidth * pr, innerHeight * pr, { type: THREE.HalfFloatType, samples: 4 }); // RODADA 7: MSAA também no celular (WebGL2/iOS 15+)
   composer = new EffectComposer(renderer, rt);
@@ -2355,6 +2356,36 @@ if (modo === "walk") aplicarCam();
   const envInt = pmrem.fromCubemap(rt.texture).texture;
   for (const [m, k] of [[M.inox, 1.0], [M.inoxV, 1.0], [M.inoxPol, 1.0], [M.inoxEspelho, 1.0], [M.inoxCaixa, 0.9], [M.inoxEsc, 0.9], [M.inoxTampo, 1.0], [M.inoxServico, 0.4], [M.gancho, 0.8], [M.inoxInterno, 0.6], [M.piso, 0.55]]) { m.envMap = envInt; m.envMapIntensity = k; m.needsUpdate = true; }
 })();
+// 18/11 (bronca: "travando, não dá nem pra andar"): perfil CELULAR enxuto. Medido no perfil iPhone:
+// 725 mil triângulos, 14 luzes (3 RectArea), sombra recalculada todo quadro, vidro com transmissão (= cena renderizada
+// 2× por quadro) e pós-processamento HDR. No celular: sombra calculada UMA vez (cena parada), vidro transparente comum,
+// sem RectArea/pontuais (compensado com luz ambiente), sem pós. Desktop continua igual.
+if (MOBILE) {
+  renderer.shadowMap.autoUpdate = false; renderer.shadowMap.needsUpdate = true;
+  let corte = 0;
+  scene.traverse(o => {
+    if (o.isLight && (o.isRectAreaLight || o.isPointLight)) { corte += o.intensity * (o.isRectAreaLight ? o.width * o.height : 0.3); o.visible = false; }
+    if (o.isMesh) for (const m of [].concat(o.material)) if (m.transmission > 0 && !m.userData.mob) {
+      m.userData.mob = 1; m.transmission = 0; m.transparent = true; m.opacity = Math.min(m.opacity ?? 1, 0.18); m.depthWrite = false; m.needsUpdate = true;
+    }
+  });
+  // Physical (clearcoat/sheen) → Standard: shader bem mais leve de compilar e de desenhar no celular
+  const troca = new Map();
+  const CAMPOS = ['color','map','normalMap','normalScale','normalMapType','roughness','roughnessMap','metalness','metalnessMap','emissive','emissiveMap','emissiveIntensity',
+    'envMap','envMapIntensity','transparent','opacity','depthWrite','depthTest','side','alphaMap','alphaTest','aoMap','aoMapIntensity','bumpMap','bumpScale','vertexColors',
+    'polygonOffset','polygonOffsetFactor','polygonOffsetUnits','fog','flatShading','toneMapped','name','visible','lightMap','lightMapIntensity','displacementMap','displacementScale','wireframe','blending'];
+  scene.traverse(o => {
+    if (!o.isMesh) return;
+    const conv = m => {
+      if (!m || !m.isMeshPhysicalMaterial) return m;
+      if (!troca.has(m)) { const n = new THREE.MeshStandardMaterial(); for (const k of CAMPOS) if (m[k] !== undefined) n[k] = (m[k] && m[k].clone && !m[k].isTexture) ? m[k].clone() : m[k]; n.userData = m.userData; troca.set(m, n); }
+      return troca.get(m);
+    };
+    o.material = Array.isArray(o.material) ? o.material.map(conv) : conv(o.material);
+  });
+  for (const k of Object.keys(M)) if (troca.has(M[k])) M[k] = troca.get(M[k]);
+  const hemi = new THREE.HemisphereLight(0xfff4ea, 0x8a8078, Math.min(1.6, 0.35 + corte * 0.06)); hemi.position.set(3.4, 3, -2); scene.add(hemi);
+}
 renderer.compile(scene, camera);
 let frames = 0;
 renderer.setAnimationLoop(() => {
