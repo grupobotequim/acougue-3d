@@ -21,7 +21,18 @@ function cv(w, h) {
   return [c, c.getContext('2d')];
 }
 
+// 18/11: teto de tamanho de textura (celular com pouca memória travava o Safari)
+export let MAXTEX = 8192;
+export function setMaxTex(m) { MAXTEX = m; }
+
 function tex(c, { srgb = true, repeat = true } = {}) {
+  const lado = Math.max(c.width, c.height);
+  if (lado > MAXTEX) {
+    const k = MAXTEX / lado;
+    const [d, x] = cv(Math.max(1, Math.round(c.width * k)), Math.max(1, Math.round(c.height * k)));
+    x.drawImage(c, 0, 0, d.width, d.height);
+    c = d;
+  }
   const t = new THREE.CanvasTexture(c);
   if (srgb) t.colorSpace = THREE.SRGBColorSpace;
   if (repeat) t.wrapS = t.wrapT = THREE.RepeatWrapping;

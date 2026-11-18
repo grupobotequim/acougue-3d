@@ -28,10 +28,26 @@ const MOBILE = TOUCH || Math.min(screen.width, screen.height) < 700;
 if (SHOT) document.body.classList.add('shot');
 if (TOUCH) document.body.classList.add('touch');
 
+// 18/11: celular com pouca memória (iPhone do Thiago) derrubava o Safari ("Um problema ocorreu repetidamente").
+// Marca "carregando" antes de montar e apaga quando fica pronto. Se a página reabrir com a marca ainda lá,
+// a carga anterior travou → sobe um nível de leveza (1 = leve, 2 = mínimo). ?leve=1/2 força; ?leve=0 desliga.
+let LEVE = 0;
+try {
+  const ant = JSON.parse(localStorage.getItem('acg-carga') || 'null');
+  if (ant && ant.carregando && Date.now() - ant.em < 10 * 60e3) LEVE = Math.min(2, (ant.leve || 0) + 1);
+  else if (ant && ant.okLeve) LEVE = ant.okLeve; // aparelho que só abriu leve continua leve
+} catch {}
+if (Q.has('leve')) LEVE = Math.max(0, Math.min(2, +Q.get('leve') || 0));
+if (!MOBILE && !Q.has('leve')) LEVE = 0;
+try { localStorage.setItem('acg-carga', JSON.stringify({ carregando: true, leve: LEVE, em: Date.now() })); } catch {}
+const PR_MAX = MOBILE ? [2, 1.25, 1][LEVE] : 2;
+TX.setMaxTex(MOBILE ? [2048, 1024, 512][LEVE] : 8192);
+
 // ------------------------------------------------------------------ renderer
-const renderer = new THREE.WebGLRenderer({ antialias: true, powerPreference: 'high-performance' });
+const renderer = new THREE.WebGLRenderer({ antialias: true, powerPreference: MOBILE ? 'default' : 'high-performance' });
 // RODADA 7: no celular até 2,5× (tela 3× do iPhone) + MSAA no composer — sem serrilhado
-renderer.setPixelRatio(Math.min(window.devicePixelRatio || 1, MOBILE ? 2.5 : 2));
+// 18/11: celular até 2× (2,5× com MSAA + HDR estourava a memória de iPhone mais antigo); leve 1,25×; mínimo 1×
+renderer.setPixelRatio(Math.min(window.devicePixelRatio || 1, PR_MAX));
 renderer.setSize(innerWidth, innerHeight);
 renderer.outputColorSpace = THREE.SRGBColorSpace;
 renderer.toneMapping = THREE.ACESFilmicToneMapping;
@@ -40,7 +56,8 @@ renderer.shadowMap.enabled = true;
 renderer.shadowMap.type = THREE.PCFSoftShadowMap;
 renderer.localClippingEnabled = true;
 document.getElementById('cena').appendChild(renderer.domElement);
-TX.setAniso(Math.min(16, renderer.capabilities.getMaxAnisotropy()));
+TX.setAniso(Math.min(MOBILE ? (LEVE ? 2 : 4) : 16, renderer.capabilities.getMaxAnisotropy()));
+if (LEVE >= 2) renderer.shadowMap.enabled = false;
 RectAreaLightUniformsLib.init();
 
 const scene = new THREE.Scene();
@@ -2239,7 +2256,7 @@ document.getElementById('ajuda').addEventListener('click', () => document.body.c
 // (rodada 4) pós: GTAO (desktop) + bloom leve (UnrealBloom, limiar alto: só LEDs, letreiro e o brilho das vitrines)
 // no desktop e no celular. Na captura de prints (?shot) o GTAO usa menos amostras.
 let composer = null, bloom = null;
-{
+if (!LEVE) {
   const pr = renderer.getPixelRatio();
   const rt = new THREE.WebGLRenderTarget(innerWidth * pr, innerHeight * pr, { type: THREE.HalfFloatType, samples: 4 }); // RODADA 7: MSAA também no celular (WebGL2/iOS 15+)
   composer = new EffectComposer(renderer, rt);
@@ -2346,6 +2363,8 @@ renderer.setAnimationLoop(() => {
     window.__pronto = true;
     document.body.classList.add('pronto');
   }
+  // 18/11: rodou ~4 s sem travar → tira a marca de "carregando"; se precisou de modo leve, lembra pra próxima
+  if (frames === 240) { try { localStorage.setItem('acg-carga', JSON.stringify(LEVE ? { okLeve: LEVE } : {})); } catch {} }
 });
 window.__app = { THREE, scene, camera, renderer, luzes, VISTAS, irPara, player, redimensionar };
 // dica "arraste aqui pra olhar": some no primeiro toque ou após 4 s
